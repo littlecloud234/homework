@@ -1,0 +1,23 @@
+# Web 框架
+Django>=5.2,<6.0
+djangorestframework>=3.15,<4.0
+django-environ>=0.11,<1.0
+whitenoise>=6.7,<7.0
+gunicorn>=23.0,<24.0
+
+# 数据库 / 队列
+psycopg[binary]>=3.2,<4.0
+pgvector>=0.3.6,<1.0
+celery>=5.4,<6.0
+redis>=5.0,<7.0
+
+# 大模型 / 文档解析
+openai>=1.40,<3.0
+pypdf>=5.0,<7.0
+python-docx>=1.1,<2.0
+python-pptx>=1.0,<2.0
+
+# 开发与测试工具（生产镜像可按需移除）
+pytest>=8.0,<9.0
+pytest-django>=4.9,<5.0
+ruff>=0.8,<1.0

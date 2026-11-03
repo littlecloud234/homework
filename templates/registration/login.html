@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}登录 · 教学智能体{% endblock %}
+
+{% block content %}
+<main class="card narrow">
+  <h1>登录</h1>
+  <p class="muted">使用课程账号登录后，才能访问已选课程的知识库。</p>
+  <form method="post" class="stack">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit" class="primary">登录</button>
+  </form>
+</main>
+{% endblock %}

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}课程问答 · 教学智能体{% endblock %}
+
+{% block content %}
+<div class="layout">
+  <aside class="sidebar">
+    <section>
+      <h2>我的课程</h2>
+      <ul class="plain-list" id="course-list">
+        {% for course in courses %}
+          <li>
+            <button type="button" class="course-item" data-course-id="{{ course.id }}">
+              <strong>{{ course.code }}</strong>
+              <span>{{ course.title }}</span>
+            </button>
+          </li>
+        {% empty %}
+          <li class="muted">暂无课程。请联系教师完成选课。</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section>
+      <h2>最近会话</h2>
+      <ul class="plain-list muted">
+        {% for conversation in conversations %}
+          <li>{{ conversation.course.code }} · {{ conversation.title|default:"未命名会话" }}</li>
+        {% empty %}
+          <li>暂无会话</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </aside>
+
+  <section class="chat">
+    <div class="chat-head">
+      <div>
+        <h1>课程知识库问答</h1>
+        <p class="muted">回答仅依据教师发布的课程资料，并给出引用；资料不足时会明确说明。</p>
+      </div>
+      <span class="notice">AI 回答可能存在偏差，请核对引用原文。</span>
+    </div>
+
+    <div id="messages" class="messages" aria-live="polite">
+      <div class="empty-state">
+        <p>选择左侧课程，然后提问。</p>
+        <p class="muted">例如：“这门课的时间复杂度分析主要看哪些章节？”</p>
+      </div>
+    </div>
+
+    <form id="ask-form" class="ask-form">
+      {% csrf_token %}
+      <label class="sr-only" for="question">问题</label>
+      <textarea
+        id="question"
+        name="question"
+        maxlength="1000"
+        rows="3"
+        required
+        placeholder="输入你的课程问题，尽量具体，例如：实验三中排序算法的时间复杂度要求是什么？"></textarea>
+      <div class="ask-actions">
+        <span class="muted">Enter 发送，Shift + Enter 换行</span>
+        <button type="submit" id="send" class="primary">提问</button>
+      </div>
+    </form>
+    <p id="status" class="status" aria-live="polite"></p>
+  </section>
+</div>
+
+<script>
+  const csrfToken = document.querySelector('#ask-form [name="csrfmiddlewaretoken"]').value;
+  const messageBox = document.getElementById("messages");
+  const statusBox = document.getElementById("status");
+  const form = document.getElementById("ask-form");
+  const input = document.getElementById("question");
+  const sendButton = document.getElementById("send");
+
+  let courseId = null;
+  let conversationId = null;
+  let sending = false;
+
+  function setStatus(text) {
+    statusBox.textContent = text || "";
+  }
+
+  function selectCourse(button) {
+    document.querySelectorAll(".course-item").forEach((item) => {
+      item.classList.toggle("active", item === button);
+    });
+    courseId = button.dataset.courseId;
+    conversationId = null;
+    messageBox.innerHTML = "";
+    setStatus(`已选择 ${button.textContent.trim().replace(/\s+/g, " ")}`);
+    input.focus();
+  }
+
+  function appendMessage(role, content, citations = [], messageId = null) {
+    if (messageBox.querySelector(".empty-state")) {
+      messageBox.innerHTML = "";
+    }
+    const article = document.createElement("article");
+    article.className = `message ${role}`;
+
+    const meta = document.createElement("div");
+    meta.className = "message-meta";
+    meta.textContent = role === "user" ? "我" : "课程助教";
+    article.appendChild(meta);
+
+    const body = document.createElement("p");
+    body.textContent = content;
+    article.appendChild(body);
+
+    if (citations.length) {
+      const title = document.createElement("p");
+      title.className = "citation-title";
+      title.textContent = "引用资料";
+      article.appendChild(title);
+      const list = document.createElement("ul");
+      list.className = "citations";
+      citations.forEach((citation) => {
+        const item = document.createElement("li");
+        item.textContent = `[${citation.rank}] 《${citation.document_title}》：${citation.quote}`;
+        list.appendChild(item);
+      });
+      article.appendChild(list);
+    }
+
+    if (role === "assistant" && messageId) {
+      const feedback = document.createElement("div");
+      feedback.className = "feedback";
+      const useful = document.createElement("button");
+      useful.type = "button";
+      useful.textContent = "有用";
+      useful.addEventListener("click", () => submitFeedback(messageId, 1, feedback));
+      const useless = document.createElement("button");
+      useless.type = "button";
+      useless.textContent = "没用";
+      useless.addEventListener("click", () => submitFeedback(messageId, -1, feedback));
+      feedback.append(useful, useless);
+      article.appendChild(feedback);
+    }
+
+    messageBox.appendChild(article);
+    messageBox.scrollTop = messageBox.scrollHeight;
+  }
+
+  async function submitFeedback(messageId, rating, container) {
+    container.textContent = "提交中…";
+    try {
+      const response = await fetch(`/api/v1/messages/${messageId}/feedback/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ rating }),
+      });
+      if (!response.ok) throw new Error("反馈提交失败");
+      container.textContent = rating === 1 ? "已记录：有用" : "已记录：没用，将进入教师待办";
+    } catch (error) {
+      container.textContent = "提交失败，请稍后再试";
+    }
+  }
+
+  document.querySelectorAll(".course-item").forEach((button) => {
+    button.addEventListener("click", () => selectCourse(button));
+  });
+
+  const firstCourse = document.querySelector(".course-item");
+  if (firstCourse) selectCourse(firstCourse);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (sending) return;
+
+    const question = input.value.trim();
+    if (!courseId) {
+      setStatus("请先选择课程。");
+      return;
+    }
+    if (!question) return;
+
+    sending = true;
+    sendButton.disabled = true;
+    appendMessage("user", question);
+    input.value = "";
+    setStatus("正在检索课程资料并生成回答…");
+
+    try {
+      const response = await fetch(`/api/v1/courses/${courseId}/ask/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          question,
+          conversation_id: conversationId,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || `请求失败（${response.status}）`);
+      }
+      conversationId = data.conversation_id || conversationId;
+      appendMessage("assistant", data.content, data.citations || [], data.id);
+      setStatus(data.status === "refused" ? "未找到足够依据，已记录到教师待办。" : "");
+    } catch (error) {
+      setStatus(error.message || "请求失败，请稍后重试。");
+    } finally {
+      sending = false;
+      sendButton.disabled = false;
+      input.focus();
+    }
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+</script>
+{% endblock %}

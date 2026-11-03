@@ -1,0 +1,29 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}教学智能体{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{% url 'chat' %}">教学智能体 · 课程问答</a>
+    <nav class="nav">
+      {% if user.is_authenticated %}
+        <span class="user-chip">{{ user.display_name|default:user.username }}</span>
+        {% if user.is_staff %}<a class="nav-link" href="/admin/">管理后台</a>{% endif %}
+        <form method="post" action="{% url 'logout' %}" class="inline-form">
+          {% csrf_token %}
+          <button type="submit" class="link-button">退出</button>
+        </form>
+      {% else %}
+        <a class="nav-link" href="{% url 'login' %}">登录</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  {% block content %}{% endblock %}
+</body>
+</html>
